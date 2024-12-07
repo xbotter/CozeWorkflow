@@ -19,21 +19,31 @@ namespace CozeWorkflow
         private readonly string _appId; // Application ID
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="CozeWorkflow{TParameters, TResponse}"/> class.
+        /// Initializes a new instance with dependency injection support
         /// </summary>
-        /// <param name="baseUrl">The base URL for the HTTP client.</param>
-        /// <param name="authToken">The authorization token.</param>
-        /// <param name="workflowId">The workflow ID.</param>
-        /// <param name="appId">The application ID.</param>
-        public CozeWorkflow(string baseUrl, string authToken, string workflowId, string appId)
+        public CozeWorkflow(HttpClient httpClient, string workflowId, string appId)
         {
-            _httpClient = new HttpClient
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            _workflowId = workflowId;
+            _appId = appId;
+        }
+
+        /// <summary>
+        /// Convenience constructor that creates its own HttpClient
+        /// </summary>
+        public CozeWorkflow(string baseUrl, string authToken, string workflowId, string appId)
+            : this(CreateAndConfigureHttpClient(baseUrl, authToken), workflowId, appId)
+        {
+        }
+
+        private static HttpClient CreateAndConfigureHttpClient(string baseUrl, string authToken)
+        {
+            var client = new HttpClient
             {
                 BaseAddress = new Uri(baseUrl)
             };
-            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
-            _workflowId = workflowId;
-            _appId = appId;
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {authToken}");
+            return client;
         }
 
         /// <summary>
@@ -43,6 +53,10 @@ namespace CozeWorkflow
         /// <returns>A task that represents the asynchronous operation. The task result contains the workflow response.</returns>
         public async Task<RunWorkflowResponse<TResponse>> RunWorkflowAsync(TParameters parameters)
         {
+            if (parameters == null)
+            {
+                throw new ArgumentNullException(nameof(parameters));
+            }
             var request = new WorkflowRequest<TParameters>
             {
                 WorkflowId = _workflowId,
