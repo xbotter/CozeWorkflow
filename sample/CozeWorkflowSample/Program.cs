@@ -1,8 +1,8 @@
-﻿
-// 示例数据类型
+﻿// 示例数据类型
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CozeWorkflow;
+using Microsoft.Extensions.Configuration;
 
 
 public class WorkflowInput {
@@ -29,28 +29,39 @@ public static class Program
     public static async Task Main(string[] args)
     {
         var baseUrl = "https://api.coze.com";
-        // Get Oauth token from Environment Variables
-
-        var authToken = Environment.GetEnvironmentVariable("COZE_AUTH_TOKEN");
-
-
+        // Get Oauth token from user secret
+        var config = new ConfigurationBuilder().AddUserSecrets(typeof(Program).Assembly).Build();
+        var authToken = config["COZE_AUTH_TOKEN"];
+        
 
         var workflow = new CozeWorkflow<WorkflowInput, WorkflowOutput>(baseUrl, authToken, "7445581085495394309", "7408201825042186245");
 
         try
         {
-            Console.WriteLine("Do you want to generate what regex?");
+            Console.WriteLine("What regex do you want to generate?");
             var input =  Console.ReadLine();
-            var response = await workflow.RunWorkflowAsync(new WorkflowInput
+
+            var parameters = new WorkflowInput
             {
                 UserId = "12345",
                 UserName = "George",
                 Input = input
-            });
+            };
 
-            Console.WriteLine("RunWorkflowAsync Response:");
-            Console.WriteLine(JsonSerializer.Serialize(response, new JsonSerializerOptions { WriteIndented = true }));
-            Console.WriteLine(response.ParsedData.Output);
+            Console.WriteLine("Streaming response:");
+
+            await foreach (var workflowEvent in workflow.RunWorkflowStreamingAsync(parameters))
+            {
+                if (workflowEvent.Event == "Message")
+                {
+                    var content = workflowEvent.Data.GetProperty("content").GetString();
+                    Console.WriteLine(content);
+                }
+                else if (workflowEvent.Event == "Done")
+                {
+                    Console.WriteLine("Workflow execution completed.");
+                }
+            }
         }
         catch (Exception ex)
         {
