@@ -75,30 +75,28 @@ namespace CozeWorkflow
             response.EnsureSuccessStatusCode();
 
             using var responseStream = await response.Content.ReadAsStreamAsync();
-            using var reader = new StreamReader(responseStream);
 
+            // 使用自定义的 StreamReader，不要缓冲
+            using var reader = new StreamReader(responseStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
+
+            char[] buffer = new char[1];
             var eventStringBuilder = new StringBuilder();
-
-            while (!reader.EndOfStream)
+            while (await reader.ReadAsync(buffer, 0, 1) > 0)
             {
-                var line = await reader.ReadLineAsync();
+                char c = buffer[0];
+                eventStringBuilder.Append(c);
 
-                if (string.IsNullOrWhiteSpace(line))
+                // 检查是否为事件的结束标志，假设事件以两个连续的换行符作为分隔
+                if (eventStringBuilder.Length >= 2 && eventStringBuilder.ToString().EndsWith("\n\n"))
                 {
-                    if (eventStringBuilder.Length > 0)
-                    {
-                        var eventString = eventStringBuilder.ToString();
-                        var workflowEvent = WorkflowEvent.Parse(eventString);
-                        yield return workflowEvent;
-                        eventStringBuilder.Clear();
-                    }
-                    continue;
+                    var eventString = eventStringBuilder.ToString();
+                    var workflowEvent = WorkflowEvent.Parse(eventString);
+                    yield return workflowEvent;
+                    eventStringBuilder.Clear();
                 }
-
-                eventStringBuilder.AppendLine(line);
             }
 
-            // Process any remaining event data
+            // 处理剩余的数据
             if (eventStringBuilder.Length > 0)
             {
                 var eventString = eventStringBuilder.ToString();
@@ -133,30 +131,25 @@ namespace CozeWorkflow
             response.EnsureSuccessStatusCode();
 
             using var responseStream = await response.Content.ReadAsStreamAsync();
-            using var reader = new StreamReader(responseStream);
+            using var reader = new StreamReader(responseStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
 
+            char[] buffer = new char[1];
             var eventStringBuilder = new StringBuilder();
 
-            while (!reader.EndOfStream)
+            while (await reader.ReadAsync(buffer, 0, 1) > 0)
             {
-                var line = await reader.ReadLineAsync();
+                char c = buffer[0];
+                eventStringBuilder.Append(c);
 
-                if (string.IsNullOrWhiteSpace(line))
+                if (eventStringBuilder.Length >= 2 && eventStringBuilder.ToString().EndsWith("\n\n"))
                 {
-                    if (eventStringBuilder.Length > 0)
-                    {
-                        var eventString = eventStringBuilder.ToString();
-                        var workflowEvent = WorkflowEvent.Parse(eventString);
-                        yield return workflowEvent;
-                        eventStringBuilder.Clear();
-                    }
-                    continue;
+                    var eventString = eventStringBuilder.ToString();
+                    var workflowEvent = WorkflowEvent.Parse(eventString);
+                    yield return workflowEvent;
+                    eventStringBuilder.Clear();
                 }
-
-                eventStringBuilder.AppendLine(line);
             }
 
-            // Process any remaining event data
             if (eventStringBuilder.Length > 0)
             {
                 var eventString = eventStringBuilder.ToString();
@@ -261,12 +254,21 @@ namespace CozeWorkflow
         public int Token { get; set; }
     }
 
-    // Class to represent workflow events
+    // 定义事件类型枚举
+    public enum WorkflowEventType
+    {
+        Message,
+        Interrupt,
+        Error,
+        Unknown
+    }
+
+    // 修改 WorkflowEvent 类，增加 EventType 属性和对应的数据属性
     public class WorkflowEvent
     {
         public int Id { get; set; }
-        public string Event { get; set; }
-        public JsonElement Data { get; set; }
+        public WorkflowEventType EventType { get; set; }
+        public object Data { get; set; }
 
         public static WorkflowEvent Parse(string eventString)
         {
@@ -284,16 +286,90 @@ namespace CozeWorkflow
                 }
                 else if (line.StartsWith("event: "))
                 {
-                    workflowEvent.Event = line.Substring(7).Trim();
+                    var eventTypeStr = line.Substring(7).Trim();
+                    workflowEvent.EventType = eventTypeStr switch
+                    {
+                        "Message" => WorkflowEventType.Message,
+                        "Interrupt" => WorkflowEventType.Interrupt,
+                        "Error" => WorkflowEventType.Error,
+                        _ => WorkflowEventType.Unknown
+                    };
                 }
                 else if (line.StartsWith("data: "))
                 {
                     var dataContent = line.Substring(6).Trim();
-                    workflowEvent.Data = JsonSerializer.Deserialize<JsonElement>(dataContent);
+
+                    // 根据事件类型解析 Data
+                    switch (workflowEvent.EventType)
+                    {
+                        case WorkflowEventType.Message:
+                            workflowEvent.Data = JsonSerializer.Deserialize<MessageEventData>(dataContent);
+                            break;
+                        case WorkflowEventType.Interrupt:
+                            workflowEvent.Data = JsonSerializer.Deserialize<InterruptEventData>(dataContent);
+                            break;
+                        case WorkflowEventType.Error:
+                            workflowEvent.Data = JsonSerializer.Deserialize<ErrorEventData>(dataContent);
+                            break;
+                        default:
+                            workflowEvent.Data = dataContent;
+                            break;
+                    }
                 }
             }
 
             return workflowEvent;
         }
+    }
+
+    // 定义 MessageEventData 类
+    public class MessageEventData
+    {
+        [JsonPropertyName("content")]
+        public string Content { get; set; }
+
+        [JsonPropertyName("node_title")]
+        public string NodeTitle { get; set; }
+
+        [JsonPropertyName("node_seq_id")]
+        public string NodeSeqId { get; set; }
+
+        [JsonPropertyName("node_is_finish")]
+        public bool NodeIsFinish { get; set; }
+
+        [JsonPropertyName("ext")]
+        public Dictionary<string, string> Ext { get; set; }
+
+        [JsonPropertyName("cost")]
+        public string Cost { get; set; }
+    }
+
+    // 定义 InterruptEventData 类
+    public class InterruptEventData
+    {
+        [JsonPropertyName("interrupt_data")]
+        public InterruptData InterruptData { get; set; }
+
+        [JsonPropertyName("node_title")]
+        public string NodeTitle { get; set; }
+    }
+
+    public class InterruptData
+    {
+        [JsonPropertyName("event_id")]
+        public string EventId { get; set; }
+
+        [JsonPropertyName("type")]
+        public int Type { get; set; }
+    }
+
+    // 定义 ErrorEventData 类
+    public class ErrorEventData
+    {
+        [JsonPropertyName("error_code")]
+        public int ErrorCode { get; set; }
+
+        [JsonPropertyName("error_message")]
+        public string ErrorMessage { get; set; }
     }
 }

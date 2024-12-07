@@ -52,14 +52,27 @@ public static class Program
 
             await foreach (var workflowEvent in workflow.RunWorkflowStreamingAsync(parameters))
             {
-                if (workflowEvent.Event == "Message")
+                if (workflowEvent.EventType == WorkflowEventType.Message)
                 {
-                    var content = workflowEvent.Data.GetProperty("content").GetString();
-                    Console.WriteLine(content);
+                    var messageData = workflowEvent.Data as MessageEventData;
+                    if (messageData != null)
+                    {
+                        Console.WriteLine(messageData.Content);
+                    }
                 }
-                else if (workflowEvent.Event == "Done")
+                else if (workflowEvent.EventType == WorkflowEventType.Interrupt)
                 {
-                    Console.WriteLine("Workflow execution completed.");
+                    var interruptData = workflowEvent.Data as InterruptEventData;
+                    // 处理中断事件
+                }
+                else if (workflowEvent.EventType == WorkflowEventType.Error)
+                {
+                    var errorData = workflowEvent.Data as ErrorEventData;
+                    Console.WriteLine($"Error: {errorData.ErrorMessage}");
+                }
+                else
+                {
+                    // 处理其他事件类型
                 }
             }
         }
