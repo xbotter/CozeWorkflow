@@ -14,12 +14,12 @@ namespace CozeWorkflow
     /// </summary>
     public class CozeWorkflow<TParameters, TResponse>
     {
-        private readonly HttpClient _httpClient; // HTTP client for making requests
-        private readonly string _workflowId; // Workflow ID
-        private readonly string _appId; // Application ID
+        private readonly HttpClient _httpClient;
+        private readonly string _workflowId;
+        private readonly string _appId;
 
         /// <summary>
-        /// Initializes a new instance with dependency injection support
+        /// Initializes a new instance with dependency injection support.
         /// </summary>
         public CozeWorkflow(HttpClient httpClient, string workflowId, string appId)
         {
@@ -29,7 +29,7 @@ namespace CozeWorkflow
         }
 
         /// <summary>
-        /// Convenience constructor that creates its own HttpClient
+        /// Convenience constructor that creates its own HttpClient.
         /// </summary>
         public CozeWorkflow(string baseUrl, string authToken, string workflowId, string appId)
             : this(CreateAndConfigureHttpClient(baseUrl, authToken), workflowId, appId)
@@ -49,8 +49,6 @@ namespace CozeWorkflow
         /// <summary>
         /// Runs a workflow asynchronously.
         /// </summary>
-        /// <param name="parameters">The parameters for the workflow.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the workflow response.</returns>
         public async Task<RunWorkflowResponse<TResponse>> RunWorkflowAsync(TParameters parameters)
         {
             if (parameters == null)
@@ -69,8 +67,6 @@ namespace CozeWorkflow
         /// <summary>
         /// Runs a workflow with streaming asynchronously and processes events.
         /// </summary>
-        /// <param name="parameters">The parameters for the workflow.</param>
-        /// <returns>An asynchronous enumerable of workflow events.</returns>
         public async IAsyncEnumerable<WorkflowEvent> RunWorkflowStreamingAsync(TParameters parameters)
         {
             var request = new WorkflowRequest<TParameters>
@@ -89,8 +85,6 @@ namespace CozeWorkflow
             response.EnsureSuccessStatusCode();
 
             using var responseStream = await response.Content.ReadAsStreamAsync();
-
-            // 使用自定义的 StreamReader，不要缓冲
             using var reader = new StreamReader(responseStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
 
             char[] buffer = new char[1];
@@ -100,7 +94,6 @@ namespace CozeWorkflow
                 char c = buffer[0];
                 eventStringBuilder.Append(c);
 
-                // 检查是否为事件的结束标志，假设事件以两个连续的换行符作为分隔
                 if (eventStringBuilder.Length >= 2 && eventStringBuilder.ToString().EndsWith("\n\n"))
                 {
                     var eventString = eventStringBuilder.ToString();
@@ -110,7 +103,6 @@ namespace CozeWorkflow
                 }
             }
 
-            // 处理剩余的数据
             if (eventStringBuilder.Length > 0)
             {
                 var eventString = eventStringBuilder.ToString();
@@ -122,10 +114,6 @@ namespace CozeWorkflow
         /// <summary>
         /// Resumes a workflow asynchronously and processes events.
         /// </summary>
-        /// <param name="eventId">The event ID.</param>
-        /// <param name="resumeData">The resume data.</param>
-        /// <param name="interruptType">The interrupt type.</param>
-        /// <returns>An asynchronous enumerable of workflow events.</returns>
         public async IAsyncEnumerable<WorkflowEvent> ResumeWorkflowAsync(string eventId, string resumeData, int interruptType)
         {
             var request = new WorkflowResumeRequest
@@ -175,11 +163,6 @@ namespace CozeWorkflow
         /// <summary>
         /// Posts a request and gets a response.
         /// </summary>
-        /// <typeparam name="TRequest">The type of the request.</typeparam>
-        /// <typeparam name="TResponse">The type of the response.</typeparam>
-        /// <param name="url">The URL to post the request to.</param>
-        /// <param name="payload">The payload to post.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the response.</returns>
         private async Task<TResponse> PostAsync<TRequest, TResponse>(string url, TRequest payload)
         {
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -199,7 +182,6 @@ namespace CozeWorkflow
     /// <summary>
     /// Class representing a workflow request.
     /// </summary>
-    /// <typeparam name="TParameters">The type of the parameters.</typeparam>
     public class WorkflowRequest<TParameters>
     {
         [JsonPropertyName("workflow_id")]
@@ -233,7 +215,6 @@ namespace CozeWorkflow
     /// <summary>
     /// Class representing the response from running a workflow.
     /// </summary>
-    /// <typeparam name="TWorkflowOutput">The type of the workflow output.</typeparam>
     public class RunWorkflowResponse<TWorkflowOutput>
     {
         [JsonPropertyName("code")]
@@ -313,7 +294,6 @@ namespace CozeWorkflow
                 {
                     var dataContent = line.Substring(6).Trim();
 
-                    // 根据事件类型解析 Data
                     switch (workflowEvent.EventType)
                     {
                         case WorkflowEventType.Message:
